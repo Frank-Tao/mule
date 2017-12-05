@@ -46,6 +46,20 @@ public class HttpRequestExpectHeaderTestCase extends AbstractHttpExpectHeaderSer
 
         stopServer();
     }
+    
+    @Test
+    public void handlesContinueResponseWithoutRequestInHeaderField() throws Exception
+    {
+        startExpectContinueServer();
+
+        Flow flow = (Flow) getFlowConstruct(REQUEST_FLOW_NAME);
+        MuleEvent event = getTestEvent(TEST_MESSAGE);
+
+        flow.process(event);
+        assertThat(requestBody, equalTo(TEST_MESSAGE));
+
+        stopServer();
+    }
 
     @Test
     public void handlesExpectationFailedResponse() throws Exception
