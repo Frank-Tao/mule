@@ -11,21 +11,16 @@ import org.mule.metadata.api.builder.BaseTypeBuilder;
 import org.mule.metadata.api.builder.ObjectTypeBuilder;
 import org.mule.metadata.api.model.MetadataFormat;
 import org.mule.metadata.api.model.MetadataType;
-import org.mule.runtime.api.metadata.resolving.StaticTypeResolver;
+import org.mule.runtime.api.metadata.resolving.InputStaticTypeResolver;
 
-public class JsonStaticTypeResolver extends StaticTypeResolver {
+public class JsonInputStaticTypeResolver extends InputStaticTypeResolver {
 
   @Override
-  public MetadataType getStaticType() {
+  public MetadataType getStaticMetadata() {
     ObjectTypeBuilder object = BaseTypeBuilder.create(MetadataFormat.JSON).objectType();
     object.id("json-object");
     object.addField().key("name").value().stringType();
     object.addField().key("last-name").value().stringType();
     return object.build();
-  }
-
-  @Override
-  public String getCategoryName() {
-    return "JSON_STATIC";
   }
 }

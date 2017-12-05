@@ -67,9 +67,10 @@ public final class MetadataScopeAdapter {
     Optional<Pair<MetadataKeyId, MetadataType>> keyId = locateMetadataKeyId(declaration);
 
     inputResolvers = declaration.getAllParameters().stream()
-       .filter(p -> getAnnotatedElement(p).map(e -> e.isAnnotationPresent(TypeResolver.class)).orElse(false))
-       .filter(p -> !hasCustomStaticType(p))
-       .collect(toMap(p -> p.getName(), p -> ResolverSupplier.of(getAnnotatedElement(p).get().getAnnotation(TypeResolver.class).value())));
+        .filter(p -> getAnnotatedElement(p).map(e -> e.isAnnotationPresent(TypeResolver.class)).orElse(false))
+        .filter(p -> !hasCustomStaticType(p))
+        .collect(toMap(p -> p.getName(),
+                       p -> ResolverSupplier.of(getAnnotatedElement(p).get().getAnnotation(TypeResolver.class).value())));
 
     if (outputResolverDeclaration != null || !inputResolvers.isEmpty()) {
       if (outputResolverDeclaration != null && !hasCustomStaticType(declaration.getOutput())) {

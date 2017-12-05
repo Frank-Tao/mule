@@ -13,13 +13,18 @@ import static org.mule.metadata.api.model.MetadataFormat.JSON;
 import static org.mule.metadata.api.model.MetadataFormat.XML;
 import static org.mule.runtime.module.extension.api.util.MuleExtensionUtils.loadExtension;
 
+import org.mule.metadata.api.model.MetadataFormat;
 import org.mule.metadata.api.model.MetadataType;
+import org.mule.runtime.api.meta.Typed;
 import org.mule.runtime.api.meta.model.ExtensionModel;
+import org.mule.runtime.api.meta.model.OutputModel;
 import org.mule.runtime.api.meta.model.operation.OperationModel;
+import org.mule.runtime.api.meta.model.parameter.ParameterModel;
 import org.mule.tck.junit4.AbstractMuleTestCase;
 import org.mule.test.metadata.extension.MetadataExtension;
 
 import org.junit.Test;
+import scala.annotation.meta.param;
 
 public class CustomStaticTypeDeclarationEnricherTestCase extends AbstractMuleTestCase {
 
@@ -28,7 +33,9 @@ public class CustomStaticTypeDeclarationEnricherTestCase extends AbstractMuleTes
   @Test
   public void withInputXmlStaticType() throws Exception {
     OperationModel o = getOperation("xmlInput");
-    MetadataType type = o.getAllParameterModels().get(0).getType();
+    ParameterModel param = o.getAllParameterModels().get(0);
+    MetadataType type = param.getType();
+    assertThat(param.hasDynamicType(), is(false));
     assertThat(type.getMetadataFormat(), is(XML));
     assertThat(type.toString(), is("shiporder"));
   }
@@ -36,7 +43,9 @@ public class CustomStaticTypeDeclarationEnricherTestCase extends AbstractMuleTes
   @Test
   public void withOutputXmlStaticType() throws Exception {
     OperationModel o = getOperation("xmlOutput");
-    MetadataType type = o.getOutput().getType();
+    OutputModel output = o.getOutput();
+    assertThat(output.hasDynamicType(), is(false));
+    MetadataType type = output.getType();
     assertThat(type.getMetadataFormat(), is(XML));
     assertThat(type.toString(), is("shiporder"));
   }
@@ -44,7 +53,9 @@ public class CustomStaticTypeDeclarationEnricherTestCase extends AbstractMuleTes
   @Test
   public void customTypeOutput() throws Exception {
     OperationModel o = getOperation("customTypeOutput");
-    MetadataType type = o.getOutput().getType();
+    OutputModel output = o.getOutput();
+    MetadataType type = output.getType();
+    assertThat(output.hasDynamicType(), is(false));
     assertThat(type.getMetadataFormat(), is(CSV));
     assertThat(type.toString(), is("csv-object"));
   }
@@ -52,20 +63,43 @@ public class CustomStaticTypeDeclarationEnricherTestCase extends AbstractMuleTes
   @Test
   public void customTypeInput() throws Exception {
     OperationModel o = getOperation("customTypeInput");
-    MetadataType type = o.getAllParameterModels().get(0).getType();
-    assertThat(type.getMetadataFormat(), is(JSON));
-    assertThat(type.toString(), is("json-object"));
+    ParameterModel param = o.getAllParameterModels().get(0);
+    assertCustomStaticType(param, new CustomTypeAssertionUnit(JSON, "json-object"));
   }
 
   @Test
   public void customTypeInputAndOutput() throws Exception {
     OperationModel o = getOperation("customInputAndOutput");
-    MetadataType type = o.getAllParameterModels().get(0).getType();
-    assertThat(type.getMetadataFormat(), is(JSON));
-    assertThat(type.toString(), is("json-object"));
+    assertCustomStaticType(o.getAllParameterModels().get(0), new CustomTypeAssertionUnit(JSON, "json-object"));
   }
 
   private OperationModel getOperation(String ope) {
     return extension.getOperationModel(ope).orElseThrow(() -> new RuntimeException(ope + " not found"));
+  }
+
+  private void assertCustomStaticType(Typed typed, CustomTypeAssertionUnit unit) {
+    MetadataType type = typed.getType();
+    assertThat(typed.hasDynamicType(), is(false));
+    assertThat(type.getMetadataFormat(), is(unit.getFormat()));
+    assertThat(type.toString(), is(unit.getTypeId()));
+  }
+
+  private class CustomTypeAssertionUnit {
+
+    private final MetadataFormat format;
+    private final String typeId;
+
+    public CustomTypeAssertionUnit(MetadataFormat format, String typeId) {
+      this.format = format;
+      this.typeId = typeId;
+    }
+
+    public MetadataFormat getFormat() {
+      return format;
+    }
+
+    public String getTypeId() {
+      return typeId;
+    }
   }
 }

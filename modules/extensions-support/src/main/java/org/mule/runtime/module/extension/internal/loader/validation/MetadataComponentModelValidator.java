@@ -38,6 +38,7 @@ import org.mule.runtime.api.metadata.resolving.InputTypeResolver;
 import org.mule.runtime.api.metadata.resolving.NamedTypeResolver;
 import org.mule.runtime.api.metadata.resolving.OutputTypeResolver;
 import org.mule.runtime.core.api.util.StringUtils;
+import org.mule.runtime.extension.api.declaration.type.annotation.CustomDefinedStaticTypeAnnotation;
 import org.mule.runtime.extension.api.loader.ExtensionModelValidator;
 import org.mule.runtime.extension.api.loader.Problem;
 import org.mule.runtime.extension.api.loader.ProblemsReporter;
@@ -234,9 +235,9 @@ public class MetadataComponentModelValidator implements ExtensionModelValidator 
   }
 
   private void failIfTypeIsObject(ComponentModel componentModel, ExtensionModel extensionModel,
-                                  String componentTypeName, Class<?> type,
+                                  MetadataType metadataType, String componentTypeName, Class<?> type,
                                   ProblemsReporter problemsReporter) {
-    if (Object.class.equals(type)) {
+    if (Object.class.equals(type) && !metadataType.getAnnotation(CustomDefinedStaticTypeAnnotation.class).isPresent()) {
       problemsReporter
           .addError(new Problem(extensionModel,
                                 format("Extension '%s' specifies a/an %s named '%s' with type '%s' as return type. Components that return a type "
@@ -263,7 +264,7 @@ public class MetadataComponentModelValidator implements ExtensionModelValidator 
                               ProblemsReporter problemsReporter) {
     String componentTypeName = getComponentModelTypeName(componentModel);
     getType(metadataType).ifPresent(type -> {
-      failIfTypeIsObject(componentModel, extensionModel, componentTypeName, type, problemsReporter);
+      failIfTypeIsObject(componentModel, extensionModel, metadataType, componentTypeName, type, problemsReporter);
       failIfTypeIsInterface(componentModel, extensionModel, metadataType, componentTypeName, type, problemsReporter);
     });
   }

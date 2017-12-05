@@ -12,9 +12,10 @@ import org.mule.runtime.extension.api.annotation.metadata.TypeResolver;
 import org.mule.runtime.extension.api.annotation.metadata.fixed.InputXmlType;
 import org.mule.runtime.extension.api.annotation.metadata.fixed.OutputXmlType;
 import org.mule.runtime.extension.api.annotation.param.MediaType;
-import org.mule.test.metadata.extension.resolver.CsvStaticTypeResolver;
-import org.mule.test.metadata.extension.resolver.JavaStaticTypeResolver;
-import org.mule.test.metadata.extension.resolver.JsonStaticTypeResolver;
+import org.mule.test.metadata.extension.resolver.CsvInputStaticTypeResolver;
+import org.mule.test.metadata.extension.resolver.JavaInputStaticTypeResolver;
+import org.mule.test.metadata.extension.resolver.JavaOutputStaticTypeResolver;
+import org.mule.test.metadata.extension.resolver.JsonInputStaticTypeResolver;
 
 import java.io.InputStream;
 
@@ -30,18 +31,18 @@ public class CustomStaticMetadataOperations {
     return IOUtils.toString(xml);
   }
 
-  @OutputResolver(output = CsvStaticTypeResolver.class)
+  @OutputResolver(output = CsvInputStaticTypeResolver.class)
   public Object customTypeOutput() {
     return "Name,LastName\njuan,desimoni\nesteban,wasinger";
   }
 
   @MediaType("application/json")
-  public String customTypeInput(@TypeResolver(JsonStaticTypeResolver.class) InputStream type) {
+  public String customTypeInput(@TypeResolver(JsonInputStaticTypeResolver.class) InputStream type) {
     return IOUtils.toString(type);
   }
 
-  @OutputResolver(output = JavaStaticTypeResolver.class)
-  public Object customInputAndOutput(@TypeResolver(JsonStaticTypeResolver.class) InputStream type) {
+  @OutputResolver(output = JavaOutputStaticTypeResolver.class)
+  public Object customInputAndOutput(@TypeResolver(JsonInputStaticTypeResolver.class) InputStream type) {
     return null;
   }
 }

@@ -27,7 +27,9 @@ import org.mule.runtime.api.meta.model.declaration.fluent.SourceDeclaration;
 import org.mule.runtime.api.meta.model.declaration.fluent.TypedDeclaration;
 import org.mule.runtime.api.meta.model.declaration.fluent.WithOperationsDeclaration;
 import org.mule.runtime.api.meta.model.declaration.fluent.WithSourcesDeclaration;
-import org.mule.runtime.api.metadata.resolving.StaticTypeResolver;
+import org.mule.runtime.api.metadata.resolving.InputStaticTypeResolver;
+import org.mule.runtime.api.metadata.resolving.OutputStaticTypeResolver;
+import org.mule.runtime.api.metadata.resolving.StaticResolver;
 import org.mule.runtime.core.api.util.IOUtils;
 import org.mule.runtime.extension.api.annotation.metadata.OutputResolver;
 import org.mule.runtime.extension.api.annotation.metadata.TypeResolver;
@@ -52,7 +54,10 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * @since 4.0
+ * Overrides the default output and input loaded types for the ones specified by the user using the custom static types features,
+ * such as {@link InputXmlType}, {@link OutputJsonType} and {@link InputStaticTypeResolver} for custom build types between others.
+ *
+ * @since 4.1
  */
 public final class CustomStaticTypeDeclarationEnricher implements DeclarationEnricher {
 
@@ -68,21 +73,21 @@ public final class CustomStaticTypeDeclarationEnricher implements DeclarationEnr
       @Override
       protected void onOperation(WithOperationsDeclaration owner, OperationDeclaration operation) {
         operation.getModelProperty(ImplementingMethodModelProperty.class)
-          .map(ImplementingMethodModelProperty::getMethod)
-          .ifPresent(method -> getOutputType(method).ifPresent(type -> declareCustomType(operation.getOutput(), type)));
+            .map(ImplementingMethodModelProperty::getMethod)
+            .ifPresent(method -> getOutputType(method).ifPresent(type -> declareCustomType(operation.getOutput(), type)));
 
         for (ParameterDeclaration param : operation.getAllParameters()) {
           param.getModelProperty(ImplementingParameterModelProperty.class)
-            .map(ImplementingParameterModelProperty::getParameter)
-            .ifPresent(annotated -> getInputType(annotated).ifPresent(type -> declareCustomType(param, type)));
+              .map(ImplementingParameterModelProperty::getParameter)
+              .ifPresent(annotated -> getInputType(annotated).ifPresent(type -> declareCustomType(param, type)));
         }
       }
 
       @Override
       protected void onSource(WithSourcesDeclaration owner, SourceDeclaration source) {
         source.getModelProperty(ImplementingTypeModelProperty.class)
-          .map(ImplementingTypeModelProperty::getType)
-          .ifPresent(clazz -> getOutputType(clazz).ifPresent(type -> declareCustomType(source.getOutput(), type)));
+            .map(ImplementingTypeModelProperty::getType)
+            .ifPresent(clazz -> getOutputType(clazz).ifPresent(type -> declareCustomType(source.getOutput(), type)));
       }
     }.walk(extensionLoadingContext.getExtensionDeclarer().getDeclaration());
   }
@@ -91,7 +96,7 @@ public final class CustomStaticTypeDeclarationEnricher implements DeclarationEnr
     MetadataType type = declaration.getType();
     Class<?> clazz = getType(type).orElseThrow(() -> new IllegalStateException("Could not find class in type [" + type + "]"));
     Set<TypeAnnotation> annotations =
-      new HashSet<>(asList(new ClassInformationAnnotation(clazz), new CustomDefinedStaticTypeAnnotation()));
+        new HashSet<>(asList(new ClassInformationAnnotation(clazz), new CustomDefinedStaticTypeAnnotation()));
     declaration.setType(doProxy(overrideType, annotations), false);
   }
 
@@ -106,7 +111,7 @@ public final class CustomStaticTypeDeclarationEnricher implements DeclarationEnr
     }
     OutputResolver resolver = element.getAnnotation(OutputResolver.class);
     if (resolver != null && isStaticResolver(resolver.output())) {
-      return ofNullable(parseCustomStaticType((Class<? extends StaticTypeResolver>) resolver.output()));
+      return ofNullable(parseCustomStaticType(resolver.output()));
     }
     return empty();
   }
@@ -122,18 +127,18 @@ public final class CustomStaticTypeDeclarationEnricher implements DeclarationEnr
     }
     TypeResolver resolver = element.getAnnotation(TypeResolver.class);
     if (resolver != null && isStaticResolver(resolver.value())) {
-      return ofNullable(parseCustomStaticType((Class<? extends StaticTypeResolver>) resolver.value()));
+      return ofNullable(parseCustomStaticType(resolver.value()));
     }
     return empty();
   }
 
   private boolean isStaticResolver(Class<?> resolverClazz) {
-    return StaticTypeResolver.class.isAssignableFrom(resolverClazz);
+    return StaticResolver.class.isAssignableFrom(resolverClazz);
   }
 
-  private MetadataType parseCustomStaticType(Class<? extends StaticTypeResolver> resolver) {
+  private MetadataType parseCustomStaticType(Class<?> resolver) {
     try {
-      return resolver.newInstance().getStaticType();
+      return ((StaticResolver) resolver.newInstance()).getStaticMetadata();
     } catch (InstantiationException | IllegalAccessException e) {
       throw new IllegalArgumentException("Can't obtain static type for element", e);
     }
@@ -141,13 +146,13 @@ public final class CustomStaticTypeDeclarationEnricher implements DeclarationEnr
 
   private MetadataType parseJsonType(String schema) {
     return getTypeFromSchema(schema, content -> new JsonTypeLoader(IOUtils.toString(content)).load(null)
-             .orElseThrow(() -> new IllegalArgumentException("Could not load type from Json schema [" + schema + "]")));
+        .orElseThrow(() -> new IllegalArgumentException("Could not load type from Json schema [" + schema + "]")));
 
   }
 
   private MetadataType parseXmlType(String schema, String name) {
     return getTypeFromSchema(schema, content -> new XmlTypeLoader(getInstance().addSchema(schema, content)).load(name)
-             .orElseThrow(() -> new IllegalArgumentException("Type [" + name + "] wasn't found in XML schema [" + schema + "]")));
+        .orElseThrow(() -> new IllegalArgumentException("Type [" + name + "] wasn't found in XML schema [" + schema + "]")));
   }
 
   private MetadataType getTypeFromSchema(String schemaName, Function<InputStream, MetadataType> loader) {

@@ -7,20 +7,17 @@
 
 package org.mule.test.metadata.extension.resolver;
 
+import static org.mule.metadata.api.model.MetadataFormat.CSV;
+
 import org.mule.metadata.api.builder.BaseTypeBuilder;
-import org.mule.metadata.api.model.MetadataFormat;
 import org.mule.metadata.api.model.MetadataType;
-import org.mule.runtime.api.metadata.resolving.StaticTypeResolver;
+import org.mule.runtime.api.metadata.resolving.InputStaticTypeResolver;
+import org.mule.runtime.api.metadata.resolving.OutputStaticTypeResolver;
 
-public class JavaStaticTypeResolver extends StaticTypeResolver {
-
-  @Override
-  public MetadataType getStaticType() {
-    return BaseTypeBuilder.create(MetadataFormat.JAVA).objectType().build();
-  }
+public class CsvInputStaticTypeResolver extends OutputStaticTypeResolver {
 
   @Override
-  public String getCategoryName() {
-    return "JAVA_STATIC";
+  public MetadataType getStaticMetadata() {
+    return BaseTypeBuilder.create(CSV).objectType().id("csv-object").build();
   }
 }
