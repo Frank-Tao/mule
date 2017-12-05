@@ -7,7 +7,8 @@
 package org.mule.runtime.module.launcher.log4j2;
 
 import static java.lang.ClassLoader.getSystemClassLoader;
-
+import static java.lang.Thread.currentThread;
+import static java.util.Collections.synchronizedMap;
 import org.mule.runtime.api.lifecycle.Disposable;
 import org.mule.runtime.deployment.model.api.policy.PolicyTemplateDescriptor;
 import org.mule.runtime.deployment.model.internal.domain.MuleSharedDomainClassLoader;
@@ -15,8 +16,11 @@ import org.mule.runtime.module.artifact.api.classloader.ArtifactClassLoader;
 import org.mule.runtime.module.artifact.api.classloader.RegionClassLoader;
 import org.mule.runtime.module.artifact.api.classloader.ShutdownListener;
 
+import java.lang.ref.WeakReference;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
 
 import org.apache.logging.log4j.core.LoggerContext;
 import org.apache.logging.log4j.core.selector.ContextSelector;
@@ -56,6 +60,8 @@ class ArtifactAwareContextSelector implements ContextSelector, Disposable {
   private final MuleLoggerContextFactory loggerContextFactory = new MuleLoggerContextFactory();
 
   private LoggerContextCache cache = new LoggerContextCache(this, getClass().getClassLoader());
+  private static final Map<ClassLoader, WeakReference<ClassLoader>> classLoaderMap =
+      synchronizedMap(new WeakHashMap<ClassLoader, WeakReference<ClassLoader>>());
 
   ArtifactAwareContextSelector() {}
 
@@ -94,7 +100,27 @@ class ArtifactAwareContextSelector implements ContextSelector, Disposable {
    * @return the {@link ClassLoader} owner of the logger context
    */
   static ClassLoader resolveLoggerContextClassLoader(ClassLoader classLoader) {
-    ClassLoader loggerClassLoader = classLoader == null ? Thread.currentThread().getContextClassLoader() : classLoader;
+    WeakReference<ClassLoader> loggerClassLoaderReference = classLoaderMap.get(classLoader);
+    ClassLoader loggerClassLoader;
+
+    if (loggerClassLoaderReference == null) {
+      loggerClassLoader = getLoggerClassLoader(classLoader);
+
+      classLoaderMap.put(classLoader, new WeakReference<>(loggerClassLoader));
+    } else {
+      loggerClassLoader = loggerClassLoaderReference.get();
+
+      if (loggerClassLoader == null) {
+        // Reference was invalidated, need to recalculate it but without storing it on the cache again
+        loggerClassLoader = getLoggerClassLoader(classLoader);
+      }
+    }
+
+    return loggerClassLoader;
+  }
+
+  private static ClassLoader getLoggerClassLoader(ClassLoader classLoader) {
+    ClassLoader loggerClassLoader = classLoader == null ? currentThread().getContextClassLoader() : classLoader;
 
     // Obtains the first artifact class loader in the hierarchy
     while (!(loggerClassLoader instanceof ArtifactClassLoader) && loggerClassLoader != null) {
@@ -102,15 +128,15 @@ class ArtifactAwareContextSelector implements ContextSelector, Disposable {
     }
 
     if (loggerClassLoader == null) {
-      return SYSTEM_CLASSLOADER;
+      loggerClassLoader = SYSTEM_CLASSLOADER;
     } else if (isRegionClassLoaderMember(loggerClassLoader)) {
       loggerClassLoader =
           isPolicyClassLoader(loggerClassLoader.getParent()) ? loggerClassLoader.getParent().getParent()
               : loggerClassLoader.getParent();
-    } else if (!(loggerClassLoader instanceof RegionClassLoader) && !(loggerClassLoader instanceof MuleSharedDomainClassLoader)) {
-      return SYSTEM_CLASSLOADER;
+    } else if (!(loggerClassLoader instanceof RegionClassLoader)
+        && !(loggerClassLoader instanceof MuleSharedDomainClassLoader)) {
+      loggerClassLoader = SYSTEM_CLASSLOADER;
     }
-
     return loggerClassLoader;
   }
 
