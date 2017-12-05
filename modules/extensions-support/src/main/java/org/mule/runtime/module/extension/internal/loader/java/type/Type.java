@@ -6,6 +6,8 @@
  */
 package org.mule.runtime.module.extension.internal.loader.java.type;
 
+import static java.util.Collections.emptyList;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.util.List;
@@ -29,4 +31,15 @@ public interface Type extends WithAnnotations, WithName, WithAlias, WithDeclarin
    */
   List<FieldElement> getAnnotatedFields(Class<? extends Annotation>... annotations);
 
+  boolean isAssignableFrom(Class<?> clazz);
+
+  boolean isAssignableTo(Class<?> clazz);
+
+  default List<GenericInfo> getGenerics() {
+    return emptyList();
+  }
+
+  java.lang.reflect.Type getReflectType();
+
+  String getTypeName();
 }

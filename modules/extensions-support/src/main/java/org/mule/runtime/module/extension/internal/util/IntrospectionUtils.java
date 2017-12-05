@@ -10,11 +10,14 @@ import static java.lang.String.format;
 import static java.lang.reflect.Modifier.isPublic;
 import static java.lang.reflect.Modifier.isStatic;
 import static java.util.Arrays.stream;
+import static java.util.Collections.reverse;
 import static java.util.Optional.empty;
 import static java.util.Optional.of;
 import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
+import static javax.lang.model.element.ElementKind.METHOD;
+import static javax.lang.model.element.Modifier.PUBLIC;
 import static org.apache.commons.collections.CollectionUtils.isEmpty;
 import static org.apache.commons.lang3.ArrayUtils.isEmpty;
 import static org.mule.metadata.api.builder.BaseTypeBuilder.create;
@@ -30,6 +33,7 @@ import static org.reflections.ReflectionUtils.getAllSuperTypes;
 import static org.reflections.ReflectionUtils.withName;
 import static org.springframework.core.ResolvableType.forMethodReturnType;
 import static org.springframework.core.ResolvableType.forType;
+
 import org.mule.metadata.api.ClassTypeLoader;
 import org.mule.metadata.api.builder.BaseTypeBuilder;
 import org.mule.metadata.api.model.AnyType;
@@ -95,8 +99,15 @@ import org.mule.runtime.module.extension.internal.loader.java.property.Implement
 import org.mule.runtime.module.extension.internal.loader.java.property.InjectedFieldModelProperty;
 import org.mule.runtime.module.extension.internal.loader.java.property.ParameterGroupModelProperty;
 import org.mule.runtime.module.extension.internal.loader.java.property.RequireNameField;
+import org.mule.runtime.module.extension.internal.loader.java.type.FieldElement;
+import org.mule.runtime.module.extension.internal.loader.java.type.MethodElement;
+import org.mule.runtime.module.extension.internal.loader.java.type.ast.FieldTypeElement;
 
-import com.google.common.collect.ImmutableList;
+import javax.annotation.processing.ProcessingEnvironment;
+import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.VariableElement;
 
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
@@ -110,6 +121,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashSet;
@@ -123,6 +135,7 @@ import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
+import com.google.common.collect.ImmutableList;
 import org.springframework.core.ResolvableType;
 
 /**
@@ -221,6 +234,10 @@ public final class IntrospectionUtils {
    * @throws IllegalArgumentException is method is {@code null}
    */
   public static MetadataType getMethodReturnType(Method method, ClassTypeLoader typeLoader) {
+    return getReturnType(getMethodType(method), typeLoader);
+  }
+
+  public static MetadataType getMethodReturnType(MethodElement method, ClassTypeLoader typeLoader) {
     return getReturnType(getMethodType(method), typeLoader);
   }
 
@@ -351,6 +368,34 @@ public final class IntrospectionUtils {
     return type != null ? typeLoader.load(type) : typeBuilder().voidType().build();
   }
 
+  public static MetadataType getMethodReturnAttributesType(MethodElement method, ClassTypeLoader typeLoader) {
+    ResolvableType outputType = ResolvableType.forType(method.getReturnType());
+    Type type = null;
+
+    if (Result.class.equals(outputType.getRawClass())) {
+      ResolvableType genericType = outputType.getGenerics()[1];
+      if (genericType.getRawClass() != null) {
+        type = genericType.getType();
+      }
+    }
+
+    if (isPagingProvider(outputType)) {
+      ResolvableType itemType = getPagingProviderTypes(outputType).getSecond();
+      if (Result.class.equals(itemType.getRawClass())) {
+        type = null;
+      }
+    }
+
+    if (isCollection(outputType)) {
+      ResolvableType itemType = outputType.getGenerics()[0];
+      if (Result.class.equals(itemType.getRawClass())) {
+        type = null;
+      }
+    }
+
+    return type != null ? typeLoader.load(type) : typeBuilder().voidType().build();
+  }
+
   public static List<MetadataType> getGenerics(Type type, ClassTypeLoader typeLoader) {
     if (type instanceof ParameterizedType) {
       ParameterizedType parameterizedType = (ParameterizedType) type;
@@ -364,6 +409,11 @@ public final class IntrospectionUtils {
   private static ResolvableType getMethodType(Method method) {
     checkArgument(method != null, "Can't introspect a null method");
     return forMethodReturnType(method);
+  }
+
+  private static ResolvableType getMethodType(MethodElement method) {
+    checkArgument(method != null, "Can't introspect a null method");
+    return ResolvableType.forType(method.getReturnTypeElement().getReflectType());
   }
 
   /**
@@ -609,11 +659,24 @@ public final class IntrospectionUtils {
     return type.equals(void.class) || type.equals(Void.class);
   }
 
+  public static boolean isVoid(MethodElement methodElement) {
+    org.mule.runtime.module.extension.internal.loader.java.type.Type returnTypeElement = methodElement.getReturnTypeElement();
+    return returnTypeElement.isAssignableFrom(void.class) || returnTypeElement.isAssignableFrom(Void.class);
+  }
+
   public static Collection<Method> getApiMethods(Class<?> declaringClass) {
     return getMethodsStream(declaringClass)
         .filter(method -> !method.isAnnotationPresent(Ignore.class) && !isLifecycleMethod(method))
         .collect(toCollection(LinkedHashSet::new));
   }
+
+  public static Collection<ExecutableElement> getApiMethods(TypeElement typeElement,
+                                                            ProcessingEnvironment processingEnvironment) {
+    return getMethodsStream(typeElement, true, processingEnvironment)
+        .filter(method -> method.getAnnotation(Ignore.class) == null && !isLifecycleMethod(method, processingEnvironment))
+        .collect(toCollection(LinkedHashSet::new));
+  }
+
 
   private static boolean isLifecycleMethod(Method method) {
     return isLifecycleMethod(method, Initialisable.class, "initialise")
@@ -622,8 +685,23 @@ public final class IntrospectionUtils {
         || isLifecycleMethod(method, Disposable.class, "dispose");
   }
 
+  private static boolean isLifecycleMethod(ExecutableElement method, ProcessingEnvironment processingEnvironment) {
+    return isLifecycleMethod(method, Initialisable.class, "initialise", processingEnvironment)
+        || isLifecycleMethod(method, Startable.class, "start", processingEnvironment)
+        || isLifecycleMethod(method, Stoppable.class, "stop", processingEnvironment)
+        || isLifecycleMethod(method, Disposable.class, "dispose", processingEnvironment);
+  }
+
   private static boolean isLifecycleMethod(Method method, Class<?> lifecycleClass, String lifecycleMethodName) {
     return lifecycleClass.isAssignableFrom(method.getDeclaringClass()) && method.getName().equals(lifecycleMethodName);
+  }
+
+  private static boolean isLifecycleMethod(ExecutableElement method, Class<?> lifecycleClass, String lifecycleMethodName,
+                                           ProcessingEnvironment processingEnvironment) {
+    //TODO REVIEW
+    TypeElement lifecycleElement = processingEnvironment.getElementUtils().getTypeElement(lifecycleClass.getTypeName());
+    return ((TypeElement) method.getEnclosingElement()).getInterfaces().contains(lifecycleElement.asType())
+        && method.getSimpleName().toString().equals(lifecycleMethodName);
   }
 
   /**
@@ -671,6 +749,38 @@ public final class IntrospectionUtils {
     return methodStream.filter(method -> isPublic(method.getModifiers()));
   }
 
+  private static Stream<ExecutableElement> getMethodsStream(TypeElement typeElement, boolean superClasses,
+                                                            ProcessingEnvironment processingEnvironment) {
+    Stream<ExecutableElement> methodStream;
+
+    if (superClasses) {
+      methodStream = getAllSuperTypes2(typeElement, processingEnvironment).stream()
+          .flatMap(type -> getEnclosingMethods(type).stream());
+    } else {
+      methodStream = getEnclosingMethods(typeElement).stream();
+    }
+
+    return methodStream.filter(method -> method.getModifiers().contains(PUBLIC));
+  }
+
+  private static Set<ExecutableElement> getEnclosingMethods(TypeElement typeElement) {
+    return typeElement.getEnclosedElements().stream().filter(elem -> elem.getKind().equals(METHOD))
+        .map(elem -> (ExecutableElement) elem).collect(toSet());
+  }
+
+  private static List<TypeElement> getAllSuperTypes2(TypeElement typeElement, ProcessingEnvironment processingEnvironment) {
+    TypeElement objectType = processingEnvironment.getElementUtils().getTypeElement(Object.class.getTypeName());
+    List<TypeElement> typeElements = new ArrayList<>();
+    TypeElement currentType = typeElement;
+    while (currentType != null && !objectType.equals(currentType)) {
+      typeElements.add(currentType);
+      currentType = (TypeElement) processingEnvironment.getTypeUtils().asElement(currentType.getSuperclass());
+    }
+    //Required to have the same behaviour as the Class one
+    reverse(typeElements);
+    return typeElements;
+  }
+
 
   public static List<Field> getAnnotatedFields(Class<?> clazz, Class<? extends Annotation> annotationType) {
     return getDescendingHierarchy(clazz).stream().flatMap(type -> stream(type.getDeclaredFields()))
@@ -680,6 +790,25 @@ public final class IntrospectionUtils {
   public static List<Field> getFields(Class<?> clazz) {
     try {
       return getFieldsStream(clazz).collect(toImmutableList());
+    } catch (Throwable e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  public static List<FieldElement> getFields(TypeElement typeElement, ProcessingEnvironment processingEnvironment) {
+    try {
+      return getFieldsStream(typeElement, processingEnvironment).collect(toImmutableList());
+    } catch (Throwable e) {
+      throw new RuntimeException(e);
+    }
+  }
+
+  private static Stream<FieldElement> getFieldsStream(TypeElement typeElement, ProcessingEnvironment processingEnvironment) {
+    try {
+      return getAllSuperTypes2(typeElement, processingEnvironment).stream()
+          .flatMap(elem -> elem.getEnclosedElements().stream())
+          .filter(elem -> elem.getKind() == ElementKind.FIELD)
+          .map(varElement -> new FieldTypeElement((VariableElement) varElement, processingEnvironment));
     } catch (Throwable e) {
       throw new RuntimeException(e);
     }
@@ -1174,4 +1303,6 @@ public final class IntrospectionUtils {
     }
     return new Pair<>(connectionType, returnType);
   }
+
+
 }

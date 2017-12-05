@@ -7,16 +7,20 @@
 package org.mule.runtime.module.extension.internal.capability.xml.extension.multiple.config;
 
 import org.mule.runtime.extension.api.annotation.Ignore;
+import org.mule.runtime.extension.api.annotation.metadata.OutputResolver;
 import org.mule.runtime.extension.api.annotation.param.Connection;
 import org.mule.runtime.extension.api.annotation.param.ParameterGroup;
+import org.mule.runtime.extension.api.metadata.NullMetadataResolver;
 
 public class TestDocumentedExtensionOperations extends AbstractTestDocumentedOperations {
+
 
   /**
    * Test Operation
    *
    * @param value test value
    */
+  @OutputResolver(output = NullMetadataResolver.class)
   public void operation(String value, @ParameterGroup(name = "group") TestDocumentedParameterGroup group) {
 
   }

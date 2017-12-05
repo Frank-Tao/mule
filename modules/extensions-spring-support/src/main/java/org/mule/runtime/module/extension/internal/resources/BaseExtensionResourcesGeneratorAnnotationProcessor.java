@@ -24,6 +24,7 @@ import org.mule.runtime.extension.api.annotation.Extension;
 import org.mule.runtime.extension.api.dsl.syntax.resources.spi.DslResourceFactory;
 import org.mule.runtime.extension.api.exception.IllegalModelDefinitionException;
 import org.mule.runtime.extension.api.loader.ExtensionModelLoader;
+import org.mule.runtime.extension.api.persistence.ExtensionModelJsonSerializer;
 import org.mule.runtime.extension.api.resources.ResourcesGenerator;
 import org.mule.runtime.extension.api.resources.spi.GeneratedResourceFactory;
 import org.mule.runtime.module.extension.internal.capability.xml.schema.ExtensionAnnotationProcessor;
@@ -38,6 +39,8 @@ import javax.lang.model.element.Name;
 import javax.lang.model.element.TypeElement;
 import javax.tools.Diagnostic;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +49,7 @@ import java.util.Set;
 
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
+import com.google.common.io.Files;
 
 
 /**
@@ -88,6 +92,16 @@ public abstract class BaseExtensionResourcesGeneratorAnnotationProcessor extends
         final Class<?> extensionClass = annotatedClass.get();
         withContextClassLoader(extensionClass.getClassLoader(), () -> {
           ExtensionModel extensionModel = parseExtension(extensionElement, roundEnv);
+          ExtensionModelJsonSerializer jsonSerializer = new ExtensionModelJsonSerializer(true);
+          String serialize = jsonSerializer.serialize(extensionModel);
+          File file = new File("/Users/estebanwasinger/Desktop/", extensionModel.getName() + ".json");
+          try {
+            file.createNewFile();
+            Files.write(serialize.getBytes(), file);
+          } catch (IOException e) {
+            e.printStackTrace();
+          }
+
           generator.generateFor(extensionModel);
         });
       });
@@ -113,11 +127,35 @@ public abstract class BaseExtensionResourcesGeneratorAnnotationProcessor extends
     params.put(EXTENSION_ELEMENT, extensionElement);
     params.put(PROCESSING_ENVIRONMENT, processingEnv);
     params.put(ROUND_ENVIRONMENT, roundEnvironment);
+    params.put("EXTENSION_ELEMENT", extensionElement);
     return getExtensionModelLoader().loadExtensionModel(extensionClass.getClassLoader(), getDefault(emptySet()), params);
   }
 
   private Optional<TypeElement> getExtension(RoundEnvironment env) {
     Set<TypeElement> elements = processor.getTypeElementsAnnotatedWith(Extension.class, env);
+    //    TypeElement next = elements.iterator().next();
+    //    ExtensionTypeElement extensionTypeElement = new ExtensionTypeElement(next, processingEnv, env);
+    //    VariableElement enumValue = extensionTypeElement.getValueFromAnnotation(Extension.class).getEnumValue(Extension::category);
+    ////    List<FieldElement> fields = extensionTypeElement.getFields();
+    ////    FieldElement fieldElement = fields.get(0);
+    //
+    //    Category category = extensionTypeElement.getCategory();
+    //
+    //    ConfigurationElement configurationElement = extensionTypeElement.getConfigurations().get(0);
+    //    List<OperationContainerElement> operationContainers =
+    //        configurationElement.getOperationContainers();
+    ////
+    //    Optional<MetadataScope> annotation = configurationElement.getAnnotation(MetadataScope.class);
+    //    configurationElement.getAnnotationValue(MetadataScope.class, MetadataScope::outputResolver);
+    ////
+    //    ASTUtils.ASTValueFetcher<OutputResolver> annotation2 = operationContainers.get(0).getOperations().get(0).getValueFromAnnotation(OutputResolver.class);
+    //    Type classValue = annotation2.getClassValue(OutputResolver::attributes);
+    //    List<MethodElement> operations = operationContainers.get(0).getOperations();
+    //    ExtensionParameter extensionParameter = operations.get(0).getParameters().get(0);
+    //    Type type = extensionParameter.getType();
+    //    java.lang.reflect.Type javaType = extensionParameter.getJavaType();
+    //
+
     if (elements.size() > 1) {
       String message =
           format("Only one extension is allowed per plugin, however several classes annotated with @%s were found. Offending classes are [%s]",
@@ -127,7 +165,15 @@ public abstract class BaseExtensionResourcesGeneratorAnnotationProcessor extends
       throw new RuntimeException(message);
     }
 
-    return elements.stream().findFirst();
+    Optional<TypeElement> first = elements.stream().findFirst();
+
+    //    ExtensionTypeElement extensionTypeElement = new ExtensionTypeElement(first.get(), processingEnv, env);
+    //    List<MethodElement> operations = extensionTypeElement.getConfigurations().get(0).getOperationContainers().get(0).getOperations();
+    //    MethodElement methodElement = operations.get(0);
+    //
+    //    Type returnTypeElemet = methodElement.getReturnTypeElement();
+
+    return first;
   }
 
   private void log(String message) {
